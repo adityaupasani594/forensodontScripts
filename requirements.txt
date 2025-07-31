@@ -1,0 +1,28 @@
+# Web server
+flask==2.3.3
+gunicorn==23.0.0
+
+# Supabase interaction
+requests==2.32.4
+beautifulsoup4==4.12.3
+python-dotenv
+pillow
+
+# Deep learning
+tensorflow==2.12.0
+torch==2.0.1
+torchvision==0.15.2
+
+# Image processing
+pillow==10.3.0
+opencv-python==4.10.0.82
+
+# Matching logic
+numpy==1.23.5
+scikit-learn==1.5.0
+
+# Vision models
+timm==0.9.16
+
+#supabase
+supabase
