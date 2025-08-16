@@ -1,10 +1,13 @@
-import os
 import concurrent.futures as cf
-from flask import Flask, request, jsonify
-from dotenv import load_dotenv
-from supabase import create_client
-from PIL import Image
+import os
+import threading
+import time
 from io import BytesIO
+
+from PIL import Image
+from dotenv import load_dotenv
+from flask import Flask, request, jsonify
+from supabase import create_client
 from werkzeug.utils import secure_filename
 
 from OPG.aadi import aadi_opencv_week5
@@ -77,22 +80,38 @@ def match_pm_image():
         if not am_images:
             return jsonify({"error": "No AM images found in Supabase bucket"}), 500
 
-        # --- define the four tasks ---
+        # --- define the four tasks with logging ---
         def run_soham():
+            t_id = threading.get_ident()
+            print(f"[START] soham_opencv on thread {t_id} at {time.time()}")
             pairs = ((n, soham_opencv_week5(img, pm_image)) for n, img in am_images.items())
-            return max(pairs, key=lambda x: x[1])
+            best = max(pairs, key=lambda x: x[1])
+            print(f"[END] soham_opencv on thread {t_id} at {time.time()}")
+            return best
 
         def run_dl():
+            t_id = threading.get_ident()
+            print(f"[START] dl_ensemble on thread {t_id} at {time.time()}")
             out = compare_with_am(temp_path, am_images, topk=1)
-            return out[0] if out else ("None", 0.0)
+            best = out[0] if out else ("None", 0.0)
+            print(f"[END] dl_ensemble on thread {t_id} at {time.time()}")
+            return best
 
         def run_sarvankar():
+            t_id = threading.get_ident()
+            print(f"[START] sarvankar on thread {t_id} at {time.time()}")
             pairs = ((n, sarvankar(img, pm_image)) for n, img in am_images.items())
-            return max(pairs, key=lambda x: x[1])
+            best = max(pairs, key=lambda x: x[1])
+            print(f"[END] sarvankar on thread {t_id} at {time.time()}")
+            return best
 
         def run_aadi():
+            t_id = threading.get_ident()
+            print(f"[START] aadi on thread {t_id} at {time.time()}")
             pairs = ((n, aadi_opencv_week5(img, pm_image)) for n, img in am_images.items())
-            return max(pairs, key=lambda x: x[1])
+            best = max(pairs, key=lambda x: x[1])
+            print(f"[END] aadi on thread {t_id} at {time.time()}")
+            return best
 
         # --- submit in parallel ---
         futures = {
@@ -115,7 +134,7 @@ def match_pm_image():
         return jsonify({"best_matches": results})
 
     except Exception as e:
-        print(f"[ERROR] /match failed: {e}")  # <--- add this
+        print(f"[ERROR] /match failed: {e}")
         return jsonify({"error": str(e)}), 500
     finally:
         if os.path.exists(temp_path):
