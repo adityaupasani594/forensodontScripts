@@ -12,6 +12,14 @@ from OPG.sarvankar import sarvankar
 from OPG.soham import soham_opencv_week5
 from OPG.vedant import compare_with_am
 
+# ===== Load environment variables =====
+load_dotenv()
+
+# Debug print to confirm .env loaded correctly
+print("DEBUG -- URL:", os.getenv("SUPABASE_URL"))
+print("DEBUG -- KEY:", os.getenv("SUPABASE_KEY")[:10] if os.getenv("SUPABASE_KEY") else None, "...")
+print("DEBUG -- BUCKET:", os.getenv("BUCKET_NAME"))
+
 # ===== CPU-only tuning (optional but recommended) =====
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
@@ -22,7 +30,6 @@ try:
 except Exception:
     pass
 
-load_dotenv()
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 SUPABASE_BUCKET = os.getenv("BUCKET_NAME")
@@ -76,7 +83,6 @@ def match_pm_image():
             return max(pairs, key=lambda x: x[1])
 
         def run_dl():
-            # compare_with_am handles dict of PIL images
             out = compare_with_am(temp_path, am_images, topk=1)
             return out[0] if out else ("None", 0.0)
 
@@ -96,7 +102,7 @@ def match_pm_image():
             "aadi":         EXECUTOR.submit(run_aadi),
         }
 
-        # --- gather results (propagate exceptions cleanly) ---
+        # --- gather results ---
         results = {}
         for k, fut in futures.items():
             try:
