@@ -3,7 +3,9 @@ import os
 import threading
 import time
 from io import BytesIO
+import numpy as np
 
+import cv2
 from PIL import Image
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify
@@ -81,11 +83,19 @@ def match_pm_image():
             return jsonify({"error": "No AM images found in Supabase bucket"}), 500
 
         # --- define the four tasks with logging ---
+
         def run_soham():
             t_id = threading.get_ident()
             print(f"[START] soham_opencv on thread {t_id} at {time.time()}")
-            pairs = ((n, match_images(img, pm_image)) for n, img in am_images.items())
+
+            # Convert PIL -> cv2 (numpy array, BGR)
+            def pil_to_cv(img):
+                return cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
+
+            pm_cv = pil_to_cv(pm_image)
+            pairs = ((n, match_images(pil_to_cv(img), pm_cv)) for n, img in am_images.items())
             best = max(pairs, key=lambda x: x[1])
+
             print(f"[END] soham_opencv on thread {t_id} at {time.time()}")
             return best
 
