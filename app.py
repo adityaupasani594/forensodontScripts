@@ -12,7 +12,7 @@ from werkzeug.utils import secure_filename
 
 from OPG.aadi import aadi_opencv_week5
 from OPG.sarvankar import sarvankar
-from OPG.soham import soham_opencv_week5
+from OPG.soham import match_images
 from OPG.vedant import compare_with_am
 
 # ===== Load environment variables =====
@@ -84,7 +84,7 @@ def match_pm_image():
         def run_soham():
             t_id = threading.get_ident()
             print(f"[START] soham_opencv on thread {t_id} at {time.time()}")
-            pairs = ((n, soham_opencv_week5(img, pm_image)) for n, img in am_images.items())
+            pairs = ((n, match_images(img, pm_image)) for n, img in am_images.items())
             best = max(pairs, key=lambda x: x[1])
             print(f"[END] soham_opencv on thread {t_id} at {time.time()}")
             return best

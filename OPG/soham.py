@@ -1,11 +1,11 @@
 import cv2
 import os
 import pickle
-import numpy as np
 
 # ===============================================================
 # Soham Feature Extraction + Matching (with pickle caching)
 # ===============================================================
+
 
 def extract_features(image_path):
     """Extracts SIFT keypoints and descriptors from an image."""
