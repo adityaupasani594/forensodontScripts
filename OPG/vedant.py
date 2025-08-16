@@ -19,15 +19,14 @@ torch.backends.cudnn.benchmark = False
 # ========== DEVICE ==========
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
 # ========== TRANSFORM FACTORY ==========
 def build_transform(size):
     return transforms.Compose([
         transforms.Resize((size, size)),
         transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        transforms.Normalize([0.485, 0.456, 0.406],
+                             [0.229, 0.224, 0.225])
     ])
-
 
 TRANSFORMS = {
     'b1': build_transform(240),
@@ -37,7 +36,6 @@ TRANSFORMS = {
 
 # ========== MODEL CACHE ==========
 MODELS = {}
-
 
 def get_model(name):
     if name in MODELS:
@@ -51,7 +49,6 @@ def get_model(name):
     MODELS[name] = model
     return model
 
-
 # ========== EMBEDDING EXTRACTOR ==========
 def get_embedding(model, image, transform):
     image_tensor = transform(image).unsqueeze(0).to(DEVICE)
@@ -59,23 +56,19 @@ def get_embedding(model, image, transform):
         emb = model(image_tensor).cpu().numpy().flatten()
     return emb / (np.linalg.norm(emb) + 1e-8)
 
-
 # ========== SIMILARITY ==========
 def dl_ensemble_scores(am1, am2, am3, pm1, pm2, pm3):
     return (np.dot(am1, pm1) + np.dot(am2, pm2) + np.dot(am3, pm3)) / 3.0 * 100
 
-
 # ========== CACHE PATH UTIL ==========
 def get_cache_path(folder):
     name = os.path.basename(os.path.abspath(folder)).replace(" ", "_")
-    return os.path.join(folder, f".cache_{name}_embeddings.pkl")
-
+    return os.path.join(folder, f".cache_{name}_vedant.pkl")
 
 def get_pm_cache_path(path):
     name = os.path.basename(path).replace(" ", "_")
     os.makedirs("pm_cache", exist_ok=True)
-    return os.path.join("pm_cache", f"{name}_embeddings.pkl")
-
+    return os.path.join("pm_cache", f"{name}_vedant.pkl")
 
 # ========== AM CACHE ==========
 def generate_am_embedding_cache(am_folder):
@@ -87,6 +80,9 @@ def generate_am_embedding_cache(am_folder):
     if os.path.exists(cache_path):
         with open(cache_path, 'rb') as f:
             cache = pickle.load(f)
+        print(f"[CACHE] Loaded existing AM cache from: {cache_path}")
+    else:
+        print(f"[CACHE] No cache found. Creating new AM cache at: {cache_path}")
 
     model_b1 = get_model('efficientnet_b1')
     model_b3 = get_model('efficientnet_b3')
@@ -95,6 +91,9 @@ def generate_am_embedding_cache(am_folder):
     image_files = [f for f in sorted(os.listdir(am_folder))
                    if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
     new_files = [f for f in image_files if f not in cache]
+
+    if not new_files:
+        print(f"[CACHE] All embeddings already cached for folder: {am_folder}")
 
     for fname in new_files:
         path = os.path.join(am_folder, fname)
@@ -113,20 +112,22 @@ def generate_am_embedding_cache(am_folder):
 
     return cache_path
 
-
 def load_or_generate_am_cache(am_folder):
-    generate_am_embedding_cache(am_folder)
-    with open(get_cache_path(am_folder), 'rb') as f:
-        return pickle.load(f)
-
+    cache_path = generate_am_embedding_cache(am_folder)
+    with open(cache_path, 'rb') as f:
+        cache = pickle.load(f)
+    print(f"[CACHE] Using AM cache: {cache_path}")
+    return cache
 
 # ========== PM CACHE ==========
 def load_or_generate_pm_embedding(pm_image_path):
     cache_path = get_pm_cache_path(pm_image_path)
     if os.path.exists(cache_path):
         with open(cache_path, 'rb') as f:
+            print(f"[CACHE] Loaded PM cache from: {cache_path}")
             return pickle.load(f)
 
+    print(f"[CACHE] No PM cache found. Creating new cache at: {cache_path}")
     img = Image.open(pm_image_path).convert("RGB")
     emb_b1 = get_embedding(get_model('efficientnet_b1'), img, TRANSFORMS['b1'])
     emb_b3 = get_embedding(get_model('efficientnet_b3'), img, TRANSFORMS['b3'])
@@ -136,7 +137,6 @@ def load_or_generate_pm_embedding(pm_image_path):
         pickle.dump([emb_b1, emb_b3, emb_conv], f)
 
     return [emb_b1, emb_b3, emb_conv]
-
 
 # ========== MATCHING ==========
 def compare_with_am(pm_image, am_input, topk=5):
@@ -148,6 +148,7 @@ def compare_with_am(pm_image, am_input, topk=5):
     results = []
 
     if isinstance(am_input, str):
+        print(f"[MATCH] Comparing PM image against AM folder: {am_input}")
         am_cache = load_or_generate_am_cache(am_input)
         for fname, am_embs in am_cache.items():
             try:
@@ -157,6 +158,7 @@ def compare_with_am(pm_image, am_input, topk=5):
                 print(f"[ERROR] Failed to compare with {fname}: {e}")
 
     elif isinstance(am_input, dict):
+        print(f"[MATCH] Comparing PM image against raw AM images (no cache)")
         model_b1 = get_model('efficientnet_b1')
         model_b3 = get_model('efficientnet_b3')
         model_conv = get_model('convnext_base')
@@ -175,5 +177,5 @@ def compare_with_am(pm_image, am_input, topk=5):
         raise TypeError("am_input must be a folder path or a dict of PIL.Images")
 
     results.sort(key=lambda x: -x[1])
-    print("Vedant done")
+    print("[MATCH] Done")
     return results[:topk]
