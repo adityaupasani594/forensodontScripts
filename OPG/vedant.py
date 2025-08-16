@@ -19,6 +19,7 @@ torch.backends.cudnn.benchmark = False
 # ========== DEVICE ==========
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
 # ========== TRANSFORM FACTORY ==========
 def build_transform(size):
     return transforms.Compose([
@@ -26,6 +27,7 @@ def build_transform(size):
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])
+
 
 TRANSFORMS = {
     'b1': build_transform(240),
@@ -35,6 +37,7 @@ TRANSFORMS = {
 
 # ========== MODEL CACHE ==========
 MODELS = {}
+
 
 def get_model(name):
     if name in MODELS:
@@ -48,6 +51,7 @@ def get_model(name):
     MODELS[name] = model
     return model
 
+
 # ========== EMBEDDING EXTRACTOR ==========
 def get_embedding(model, image, transform):
     image_tensor = transform(image).unsqueeze(0).to(DEVICE)
@@ -55,19 +59,23 @@ def get_embedding(model, image, transform):
         emb = model(image_tensor).cpu().numpy().flatten()
     return emb / (np.linalg.norm(emb) + 1e-8)
 
+
 # ========== SIMILARITY ==========
 def dl_ensemble_scores(am1, am2, am3, pm1, pm2, pm3):
     return (np.dot(am1, pm1) + np.dot(am2, pm2) + np.dot(am3, pm3)) / 3.0 * 100
+
 
 # ========== CACHE PATH UTIL ==========
 def get_cache_path(folder):
     name = os.path.basename(os.path.abspath(folder)).replace(" ", "_")
     return os.path.join(folder, f".cache_{name}_embeddings.pkl")
 
+
 def get_pm_cache_path(path):
     name = os.path.basename(path).replace(" ", "_")
     os.makedirs("pm_cache", exist_ok=True)
     return os.path.join("pm_cache", f"{name}_embeddings.pkl")
+
 
 # ========== AM CACHE ==========
 def generate_am_embedding_cache(am_folder):
@@ -105,10 +113,12 @@ def generate_am_embedding_cache(am_folder):
 
     return cache_path
 
+
 def load_or_generate_am_cache(am_folder):
     generate_am_embedding_cache(am_folder)
     with open(get_cache_path(am_folder), 'rb') as f:
         return pickle.load(f)
+
 
 # ========== PM CACHE ==========
 def load_or_generate_pm_embedding(pm_image_path):
@@ -126,6 +136,7 @@ def load_or_generate_pm_embedding(pm_image_path):
         pickle.dump([emb_b1, emb_b3, emb_conv], f)
 
     return [emb_b1, emb_b3, emb_conv]
+
 
 # ========== MATCHING ==========
 def compare_with_am(pm_image, am_input, topk=5):
@@ -164,4 +175,5 @@ def compare_with_am(pm_image, am_input, topk=5):
         raise TypeError("am_input must be a folder path or a dict of PIL.Images")
 
     results.sort(key=lambda x: -x[1])
+    print("Vedant done")
     return results[:topk]

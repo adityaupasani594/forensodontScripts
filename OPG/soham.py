@@ -109,7 +109,6 @@ def soham_opencv_week5(am_img, pm_img):
             'RESNET': safe_metric(compute_resnet_similarity_bytes, am_bytes, pm_bytes)
         }
 
-    # Weights: index 1 = SIFT, 3 = BRISK, 4 = SSIM, 5 = RESNET
     weights = {'SIFT': 0.5, 'BRISK': 1.0, 'SSIM': 0.5, 'RESNET': 0.2}
 
     def weighted_score(s):

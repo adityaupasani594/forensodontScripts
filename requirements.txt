@@ -5,8 +5,8 @@ gunicorn==23.0.0
 # Supabase interaction
 requests==2.32.4
 beautifulsoup4==4.12.3
-python-dotenv
-pillow
+python-dotenv~=1.1.1
+pillow~=10.3.0
 
 # Deep learning
 tensorflow==2.12.0
@@ -18,11 +18,14 @@ pillow==10.3.0
 opencv-python==4.10.0.82
 
 # Matching logic
-numpy==1.23.5
+numpy~=1.26.4
 scikit-learn==1.5.0
 
 # Vision models
 timm==0.9.16
 
 #supabase
-supabase
+supabase~=2.17.0
+
+scikit-image~=0.25.2
+Werkzeug~=3.1.3

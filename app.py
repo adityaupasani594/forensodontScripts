@@ -1,4 +1,5 @@
 import os
+import concurrent.futures as cf
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 from supabase import create_client
@@ -11,95 +12,112 @@ from OPG.sarvankar import sarvankar
 from OPG.soham import soham_opencv_week5
 from OPG.vedant import compare_with_am
 
-# Load environment variables
+# ===== CPU-only tuning (optional but recommended) =====
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+try:
+    import torch
+    torch.set_num_threads(max(1, os.cpu_count() // 2))
+    torch.set_num_interop_threads(1)
+except Exception:
+    pass
+
 load_dotenv()
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 SUPABASE_BUCKET = os.getenv("BUCKET_NAME")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-
 app = Flask(__name__)
 
 TEMP_DIR = "temp_uploads"
 os.makedirs(TEMP_DIR, exist_ok=True)
 
+# Thread pool for algorithm-level parallelism (CPU-only)
+EXECUTOR = cf.ThreadPoolExecutor(max_workers=4)  # one per algorithm
+
 
 def get_am_images_from_bucket():
     response = supabase.storage.from_(SUPABASE_BUCKET).list()
     images = {}
-
     for item in response:
-        filename = item['name']
+        filename = item["name"]
         if not filename.lower().endswith((".jpg", ".jpeg", ".png")):
             continue
         try:
-            image_data = supabase.storage.from_(SUPABASE_BUCKET).download(filename)
-            image = Image.open(BytesIO(image_data)).convert("RGB")
-            images[filename] = image
+            blob = supabase.storage.from_(SUPABASE_BUCKET).download(filename)
+            images[filename] = Image.open(BytesIO(blob)).convert("RGB")
         except Exception as e:
-            print(f"Failed to download or open {filename}: {e}")
-            continue
+            print(f"[WARN] Skip {filename}: {e}")
     return images
 
 
-# === API Endpoint ===
 @app.route("/match", methods=["POST"])
 def match_pm_image():
     if 'file' not in request.files:
         return jsonify({"error": "No image uploaded"}), 400
-
     file = request.files['file']
     if file.filename == "":
         return jsonify({"error": "No image selected"}), 400
 
+    filename = secure_filename(file.filename)
+    temp_path = os.path.join(TEMP_DIR, filename)
+    file.save(temp_path)
+
     try:
-        # Save uploaded image to disk
-        filename = secure_filename(file.filename)
-        temp_path = os.path.join(TEMP_DIR, filename)
-        file.save(temp_path)
-
-        # Load PM image (for PIL-based methods)
         pm_image = Image.open(temp_path).convert("RGB")
-
-        # Get AM images
         am_images = get_am_images_from_bucket()
         if not am_images:
             return jsonify({"error": "No AM images found in Supabase bucket"}), 500
 
-        # --- Algorithm 1: soham_opencv ---
-        opencv_results = [(am_name, soham_opencv_week5(am_img, pm_image)) for am_name, am_img in am_images.items()]
-        best_opencv_match = max(opencv_results, key=lambda x: x[1])
+        # --- define the four tasks ---
+        def run_soham():
+            pairs = ((n, soham_opencv_week5(img, pm_image)) for n, img in am_images.items())
+            return max(pairs, key=lambda x: x[1])
 
-        # --- Algorithm 2: DL Ensemble (needs file path) ---
-        dl_results = compare_with_am(temp_path, am_images, topk=1)
-        best_dl_match = dl_results[0] if dl_results else ("None", 0)
+        def run_dl():
+            # compare_with_am handles dict of PIL images
+            out = compare_with_am(temp_path, am_images, topk=1)
+            return out[0] if out else ("None", 0.0)
 
-        # --- Algorithm 3: sarvankar_function ---
-        sarvankar_results = [(am_name, sarvankar(am_img, pm_image)) for am_name, am_img in am_images.items()]
-        best_sarvankar_match = max(sarvankar_results, key=lambda x: x[1])
+        def run_sarvankar():
+            pairs = ((n, sarvankar(img, pm_image)) for n, img in am_images.items())
+            return max(pairs, key=lambda x: x[1])
 
-        # --- Algorithm 4: aadi_function ---
-        aadi_results = [(am_name, aadi_opencv_week5(am_img, pm_image)) for am_name, am_img in am_images.items()]
-        best_aadi_match = max(aadi_results, key=lambda x: x[1])
+        def run_aadi():
+            pairs = ((n, aadi_opencv_week5(img, pm_image)) for n, img in am_images.items())
+            return max(pairs, key=lambda x: x[1])
 
-        return jsonify({
-            "best_matches": {
-                "soham_opencv": {"image": best_opencv_match[0], "score": best_opencv_match[1]},
-                "dl_ensemble": {"image": best_dl_match[0], "score": best_dl_match[1]},
-                "sarvankar": {"image": best_sarvankar_match[0], "score": best_sarvankar_match[1]},
-                "aadi": {"image": best_aadi_match[0], "score": best_aadi_match[1]},
-            }
-        })
+        # --- submit in parallel ---
+        futures = {
+            "soham_opencv": EXECUTOR.submit(run_soham),
+            "dl_ensemble":  EXECUTOR.submit(run_dl),
+            "sarvankar":    EXECUTOR.submit(run_sarvankar),
+            "aadi":         EXECUTOR.submit(run_aadi),
+        }
+
+        # --- gather results (propagate exceptions cleanly) ---
+        results = {}
+        for k, fut in futures.items():
+            try:
+                name, score = fut.result()
+            except Exception as e:
+                print(f"[ERROR] {k} failed: {e}")
+                name, score = "None", 0.0
+            results[k] = {"image": name, "score": float(score)}
+
+        return jsonify({"best_matches": results})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
     finally:
-        # Clean up temp file
         if os.path.exists(temp_path):
-            os.remove(temp_path)
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":
+    # For production, run behind gunicorn/uvicorn with multiple workers
     app.run(host="0.0.0.0", port=5000)
