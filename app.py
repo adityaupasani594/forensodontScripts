@@ -115,6 +115,7 @@ def match_pm_image():
         return jsonify({"best_matches": results})
 
     except Exception as e:
+        print(f"[ERROR] /match failed: {e}")  # <--- add this
         return jsonify({"error": str(e)}), 500
     finally:
         if os.path.exists(temp_path):
