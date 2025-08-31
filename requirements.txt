@@ -18,7 +18,7 @@ pillow==10.3.0
 opencv-python==4.10.0.82
 
 # Matching logic
-numpy~=1.26.4
+numpy~=1.23.5
 scikit-learn==1.5.0
 
 # Vision models
